@@ -1,4 +1,5 @@
-use std::io;
+use std::io::{self, Read};
+use std::sync::Arc;
 
 pub use status::Status;
 
@@ -87,7 +88,9 @@ impl Request {
             uri: uri.try_into().expect("I checked the length"),
         })
     }
-
+    pub fn url(&self) -> uri::Uri {
+        uri::Uri::new(self.uri.as_str()).unwrap()
+    }
     pub fn read<R: std::io::Read>(_reader: R) -> Option<Self> {
         unimplemented!();
     }
@@ -408,15 +411,6 @@ pub mod uri {
         fn is_scheme(c: char) -> bool {
             c.is_alphabetic() || c.is_ascii_digit() || "+-.".contains(c)
         }
-        fn is_unreserved(c: char) -> bool {
-            "-._~".contains(c) || c.is_ascii_digit() || c.is_alphabetic()
-        }
-        fn is_path(c: char) -> bool {
-            Self::is_unreserved(c) || "%!$&'()*+,;=:@/".contains(c)
-        }
-        fn is_query(c: char) -> bool {
-            c == '?' || Self::is_path(c)
-        }
     }
 
     pub fn percent_decode(s: impl AsRef<str>) -> Option<String> {
@@ -496,6 +490,122 @@ pub mod uri {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum ClientError {
+    #[error("I/O: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Response: {0}")]
+    Response(#[from] ResponseReadError),
+    #[error("Rustls: {0}")]
+    Rustls(#[from] rustls::Error),
+    #[error("Port is invalid")]
+    BadPort,
+}
+
+pub struct Client {
+    cfg: Arc<rustls::client::ClientConfig>,
+}
+
+impl Client {
+    pub fn new() -> Self {
+        let config = rustls::ClientConfig::builder()
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(DummyVerifier))
+            .with_no_client_auth();
+        Self {
+            cfg: Arc::new(config),
+        }
+    }
+
+    pub fn send_request(&self, r: Request) -> Result<Response, ClientError> {
+        use std::net::TcpStream;
+        let url = r.url();
+        let host = url.host.unwrap();
+        let port = url.port.unwrap_or("1965").parse::<u16>().unwrap();
+        let mut cc = rustls::ClientConnection::new(
+            self.cfg.clone(),
+            ServerName::try_from(host).unwrap().to_owned(),
+        )?;
+        let mut sock = TcpStream::connect((host, port))?;
+
+        // 1. Request TLS Session
+        cc.write_tls(&mut sock).unwrap();
+        // 2. Received Server Certificate
+        cc.read_tls(&mut sock).unwrap();
+        // 3. Check certificate
+        cc.process_new_packets().unwrap();
+        // 4. Write out request
+        r.write(cc.writer()).unwrap();
+        // 5. Encrypt request and flush
+        cc.write_tls(&mut sock).unwrap();
+        let mut closed = false;
+        let mut data = Vec::new();
+        while !closed {
+            while cc.wants_read() {
+                cc.read_tls(&mut sock).unwrap();
+                let state = cc.process_new_packets().unwrap();
+                closed = state.peer_has_closed();
+            }
+            let _ = cc.reader().read_to_end(&mut data);
+        }
+
+        Ok(Response::read(std::io::Cursor::new(data))?)
+    }
+}
+#[derive(Debug)]
+struct DummyVerifier;
+
+use rustls::client::danger::{
+    HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier,
+};
+use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use rustls::{DigitallySignedStruct, SignatureScheme};
+impl ServerCertVerifier for DummyVerifier {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        Ok(ServerCertVerified::assertion())
+    }
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &CertificateDer<'_>,
+        _dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        Ok(HandshakeSignatureValid::assertion())
+    }
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &CertificateDer<'_>,
+        _dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        Ok(HandshakeSignatureValid::assertion())
+    }
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        use rustls::SignatureScheme::*;
+        vec![
+            RSA_PKCS1_SHA1,
+            ECDSA_SHA1_Legacy,
+            RSA_PKCS1_SHA256,
+            ECDSA_NISTP256_SHA256,
+            RSA_PKCS1_SHA384,
+            ECDSA_NISTP384_SHA384,
+            RSA_PKCS1_SHA512,
+            ECDSA_NISTP521_SHA512,
+            RSA_PSS_SHA256,
+            RSA_PSS_SHA384,
+            RSA_PSS_SHA512,
+            ED25519,
+            ED448,
+        ]
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
