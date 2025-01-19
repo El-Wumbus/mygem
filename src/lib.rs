@@ -75,12 +75,12 @@ pub struct Request {
 impl Request {
     pub fn new(uri: impl AsRef<str>) -> Result<Self, RequestError> {
         let uri = uri.as_ref();
-        if uri.len() > 1024 || uri.starts_with('\u{FEFF}') {
+        if uri.len() > 1024 {
             return Err(RequestError::UrlTooLong);
         }
         let view = uri::Uri::new(uri).map_err(|_| RequestError::UrlTooLong)?;
         // SEE: 1.2 Gemini URI scheme
-        if view.host.is_none() || view.userinfo.is_some() {
+        if uri.starts_with('\u{FEFF}') || view.host.is_none() || view.userinfo.is_some() {
             return Err(RequestError::InvalidUrl);
         };
         Ok(Self {
@@ -219,6 +219,7 @@ pub mod status {
     #[error("Status code is not within the acceptable range: {0}")]
     pub struct InvalidStatusError(u8);
 
+    // TODO: flatten this structure?
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub enum Status {
         Input(Input),

@@ -42,7 +42,7 @@ fn main() {
     let mut closed = false;
     let mut data = Vec::new();
 
-    while (!closed) {
+    while !closed {
         while client.wants_read() {
             client.read_tls(&mut socket).unwrap();
             let state = client.process_new_packets().unwrap();
