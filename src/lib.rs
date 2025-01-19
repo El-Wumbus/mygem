@@ -57,32 +57,44 @@ pub enum ResponseHeaderParseError {
     Status(#[from] status::InvalidStatusError),
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum RequestError {
+    #[error("I/O: {0}")]
+    Io(#[from] io::Error),
+    #[error("URL was longer than 1024 bytes")]
+    UrlTooLong,
+    #[error("URL is not a valid gemini URI")]
+    InvalidUrl,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Request {
     uri: StackStr<1024>,
 }
 
 impl Request {
-    pub fn new(uri: impl AsRef<str>) -> Option<Self> {
+    pub fn new(uri: impl AsRef<str>) -> Result<Self, RequestError> {
         let uri = uri.as_ref();
         if uri.len() > 1024 || uri.starts_with('\u{FEFF}') {
-            return None;
+            return Err(RequestError::UrlTooLong);
         }
-        let view = uri::Uri::new(uri).ok()?;
+        let view = uri::Uri::new(uri).map_err(|_| RequestError::UrlTooLong)?;
         // SEE: 1.2 Gemini URI scheme
         if view.host.is_none() || view.userinfo.is_some() {
-            return None;
+            return Err(RequestError::InvalidUrl);
         };
-        Some(Self {
-            uri: uri.try_into().ok()?,
+        Ok(Self {
+            uri: uri.try_into().expect("I checked the length"),
         })
     }
 
     pub fn read<R: std::io::Read>(_reader: R) -> Option<Self> {
         unimplemented!();
     }
-    pub fn write<W: std::io::Write>(_writer: W) -> Option<Self> {
-        unimplemented!();
+    pub fn write<W: std::io::Write>(&self, mut writer: W) -> Result<(), RequestError> {
+        writer.write_all(self.uri.as_bytes())?;
+        writer.write_all(b"\r\n")?;
+        Ok(())
     }
 }
 
@@ -195,6 +207,10 @@ impl Response {
             header,
             body: buffer,
         })
+    }
+
+    pub fn body_as_str(&self) -> Result<&str, std::str::Utf8Error> {
+        std::str::from_utf8(&self.body)
     }
 }
 
