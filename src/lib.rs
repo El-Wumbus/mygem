@@ -91,6 +91,9 @@ impl Request {
     pub fn url(&self) -> uri::Uri {
         uri::Uri::new(self.uri.as_str()).unwrap()
     }
+    pub fn url_as_str(&self) -> &str {
+        self.uri.as_str()
+    }
     pub fn read<R: std::io::Read>(_reader: R) -> Option<Self> {
         unimplemented!();
     }
@@ -541,7 +544,7 @@ impl Client {
         let mut closed = false;
         let mut data = Vec::new();
         while !closed {
-            while cc.wants_read() {
+            while cc.wants_read() && !closed {
                 cc.read_tls(&mut sock).unwrap();
                 let state = cc.process_new_packets().unwrap();
                 closed = state.peer_has_closed();
