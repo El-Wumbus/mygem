@@ -1,4 +1,5 @@
 use std::io::{self, Read};
+use std::str::Lines;
 use std::sync::Arc;
 
 pub use status::Status;
@@ -336,6 +337,56 @@ pub mod status {
         CertificateNotValid,
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+pub enum GemtextToken<'a> {
+    Text(&'a str),
+    Link(&'a str, Option<&'a str>),
+    Heading(&'a str, u8),
+    Preformatted(&'a str),
+}
+
+#[derive(Debug, Clone)]
+pub struct Gemtext<'a> {
+    lines: Lines<'a>,
+    preformatted: bool,
+}
+
+impl<'a> Gemtext<'a> {
+    pub fn new(src: &'a str) -> Self {
+        Self {
+            lines: src.lines(),
+            preformatted: false,
+        }
+    }
+}
+
+impl<'a> Iterator for Gemtext<'a> {
+    type Item = GemtextToken<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let line = self.lines.next()?;
+        if line.starts_with("#") {
+            let size = line.chars().filter(|x| *x == '#').count();
+            let line = line.trim_start_matches(|x: char| x == '#' || x.is_whitespace());
+            return Some(GemtextToken::Heading(line, size as u8));
+        } else if line.starts_with("=>") {
+            let line = line.strip_prefix("=>").unwrap();
+            if line.starts_with(char::is_whitespace) {
+                let line = line.trim_start();
+                let (bruh, moment) = line
+                    .split_once(char::is_whitespace)
+                    .map(|(x, y)| (x, Some(y.trim_start())))
+                    .unwrap_or((line, None));
+                return Some(GemtextToken::Link(bruh, moment));
+            }
+        }
+        // TODO: more Gemtext feaures like, preformatted text, list items, and quoted
+        // text
+        Some(GemtextToken::Text(line))
+    }
+}
+// TODO: iterator impl
 
 pub mod uri {
     #[derive(Debug, thiserror::Error)]

@@ -56,9 +56,11 @@ fn main() {
     if meta.starts_with("text/") {
         println!("{}", response.body_as_str().expect("expected utf8 text"));
     } else {
-        let path = std::path::PathBuf::from("/tmp").join(request.url().path.unwrap_or(""));
+        let path =
+            std::path::PathBuf::from("/tmp").join(request.url().path.unwrap_or(""));
         eprintln!("Saving data with mimetype '{}' to {:?}", meta, path);
         let mut f = std::fs::File::create(&path).unwrap();
-        f.write_all(&response.body).expect("failed to write to file!");
+        f.write_all(&response.body)
+            .expect("failed to write to file!");
     }
 }
