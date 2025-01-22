@@ -386,7 +386,6 @@ impl<'a> Iterator for Gemtext<'a> {
         Some(GemtextToken::Text(line))
     }
 }
-// TODO: iterator impl
 
 pub mod uri {
     #[derive(Debug, thiserror::Error)]
@@ -429,7 +428,7 @@ pub mod uri {
 
             if src.starts_with(char::is_alphabetic) {
                 if let Some((scheme, rest)) = src.split_once(':') {
-                    if scheme.chars().all(Self::is_scheme) {
+                    if scheme.chars().all(is_scheme) {
                         uri.scheme = Some(scheme);
                         src = rest;
                     }
@@ -461,10 +460,76 @@ pub mod uri {
 
             Ok(uri)
         }
+    }
 
-        fn is_scheme(c: char) -> bool {
-            c.is_alphabetic() || c.is_ascii_digit() || "+-.".contains(c)
+    pub struct UriOwned {
+        pub scheme: Option<String>,
+        pub userinfo: Option<String>,
+        pub host: Option<String>,
+        pub port: Option<String>,
+        pub path: Option<String>,
+        pub query: Option<String>,
+        pub fragment: Option<String>,
+    }
+
+    impl From<Uri<'_>> for UriOwned {
+        fn from(uri: Uri) -> Self {
+            Self {
+                scheme: uri.scheme.map(String::from),
+                userinfo: uri.userinfo.map(String::from),
+                host: uri.host.map(String::from),
+                port: uri.port.map(String::from),
+                path: uri.path.map(String::from),
+                query: uri.query.map(String::from),
+                fragment: uri.fragment.map(String::from),
+            }
         }
+    }
+
+    impl ToString for UriOwned {
+        fn to_string(&self) -> String {
+            let mut s = String::new();
+            if let Some(scheme) = self.scheme.as_deref() {
+                s.push_str(scheme);
+                s.push(':');
+            }
+            
+            if self.host.is_some() {
+                s.push_str("//");
+                if let Some(userinfo) = self.userinfo.as_deref() {
+                    s.push_str(userinfo);
+                    s.push('@');
+                    unreachable!();
+                }
+                if let Some(host) = self.host.as_deref() {
+                    s.push_str(host);
+                }
+                if let Some(port) = self.port.as_deref() {
+                    s.push(':');
+                    s.push_str(port);
+                }
+                if let Some(path) = self.path.as_deref() {
+                    s.push('/');
+                    s.push_str(path);
+                }
+            } else if let Some(path) = self.path.as_deref() {
+                s.push_str(path);
+            }
+            if let Some(query) = self.query.as_deref() {
+                s.push('?');
+                s.push_str(query);
+            }
+            if let Some(fragment) = self.fragment.as_deref() {
+                s.push('#');
+                s.push_str(fragment);
+            }
+            s
+        }
+
+    }
+
+    fn is_scheme(c: char) -> bool {
+        c.is_alphabetic() || c.is_ascii_digit() || "+-.".contains(c)
     }
 
     pub fn percent_decode(s: impl AsRef<str>) -> Option<String> {
@@ -540,6 +605,35 @@ pub mod uri {
             assert_eq!(uri.path, Some("forum/questions/"));
             assert_eq!(uri.query, Some("query"));
             assert_eq!(uri.fragment, Some("Frag"));
+        }
+
+        #[test]
+        fn uri_owned() {
+            let test1 = "https://www.youtube.com/watch?v=QyjyWUrHsFc";
+            let test2 = "http://www.ietf.org/rfc/rfc2396.txt";
+            let test3 = "ldap://[2001:db8::7]/c=GB?objectClass?one";
+            let test4 = "mailto:John.Doe@example.com";
+            let test5 = "news:comp.infosystems.www.servers.unix";
+            let test6 = "tel:+1-816-555-1212";
+            let test7 = "telnet://192.0.2.16:80/";
+            let test8 = "urn:oasis:names:specification:docbook:dtd:xml:4.1.2";
+
+            let uri1 = Uri::new(test1).unwrap();
+            assert_eq!(UriOwned::from(dbg!(uri1)).to_string(), test1);
+            let uri2 = Uri::new(test2).unwrap();
+            assert_eq!(UriOwned::from(dbg!(uri2)).to_string(), test2);
+            let uri3 = Uri::new(test3).unwrap();
+            assert_eq!(UriOwned::from(dbg!(uri3)).to_string(), test3);
+            let uri4 = Uri::new(test4).unwrap();
+            assert_eq!(UriOwned::from(dbg!(uri4)).to_string(), test4);
+            let uri5 = Uri::new(test5).unwrap();
+            assert_eq!(UriOwned::from(dbg!(uri5)).to_string(), test5);
+            let uri6 = Uri::new(test6).unwrap();
+            assert_eq!(UriOwned::from(dbg!(uri6)).to_string(), test6);
+            let uri7 = Uri::new(test7).unwrap();
+            assert_eq!(UriOwned::from(dbg!(uri7)).to_string(), test7);
+            let uri8 = Uri::new(test8).unwrap();
+            assert_eq!(UriOwned::from(dbg!(uri8)).to_string(), test8);
         }
     }
 }
