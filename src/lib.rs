@@ -394,7 +394,7 @@ pub mod uri {
         Invalid,
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Copy)]
     pub struct Uri<'a> {
         pub scheme: Option<&'a str>,
         pub userinfo: Option<&'a str>,
@@ -462,6 +462,60 @@ pub mod uri {
         }
     }
 
+    impl<'a> From<&'a UriOwned> for Uri<'a> {
+        fn from(uri: &'a UriOwned) -> Self {
+            Self {
+                scheme: uri.scheme.as_deref(),
+                userinfo: uri.userinfo.as_deref(),
+                host: uri.host.as_deref(),
+                port: uri.port.as_deref(),
+                path: uri.path.as_deref(),
+                query: uri.query.as_deref(),
+                fragment: uri.fragment.as_deref(),
+            }
+        }
+    }
+
+    impl ToString for Uri<'_> {
+        fn to_string(&self) -> String {
+            let mut s = String::new();
+            if let Some(scheme) = self.scheme.as_deref() {
+                s.push_str(scheme);
+                s.push(':');
+            }
+
+            if self.host.is_some() {
+                s.push_str("//");
+                if let Some(userinfo) = self.userinfo.as_deref() {
+                    s.push_str(userinfo);
+                    s.push('@');
+                }
+                if let Some(host) = self.host.as_deref() {
+                    s.push_str(host);
+                }
+                if let Some(port) = self.port.as_deref() {
+                    s.push(':');
+                    s.push_str(port);
+                }
+                if let Some(path) = self.path.as_deref() {
+                    s.push('/');
+                    s.push_str(path.trim_start_matches('/'));
+                }
+            } else if let Some(path) = self.path.as_deref() {
+                s.push_str(path);
+            }
+            if let Some(query) = self.query.as_deref() {
+                s.push('?');
+                s.push_str(query);
+            }
+            if let Some(fragment) = self.fragment.as_deref() {
+                s.push('#');
+                s.push_str(fragment);
+            }
+            s
+        }
+    }
+
     pub struct UriOwned {
         pub scheme: Option<String>,
         pub userinfo: Option<String>,
@@ -488,44 +542,9 @@ pub mod uri {
 
     impl ToString for UriOwned {
         fn to_string(&self) -> String {
-            let mut s = String::new();
-            if let Some(scheme) = self.scheme.as_deref() {
-                s.push_str(scheme);
-                s.push(':');
-            }
-            
-            if self.host.is_some() {
-                s.push_str("//");
-                if let Some(userinfo) = self.userinfo.as_deref() {
-                    s.push_str(userinfo);
-                    s.push('@');
-                    unreachable!();
-                }
-                if let Some(host) = self.host.as_deref() {
-                    s.push_str(host);
-                }
-                if let Some(port) = self.port.as_deref() {
-                    s.push(':');
-                    s.push_str(port);
-                }
-                if let Some(path) = self.path.as_deref() {
-                    s.push('/');
-                    s.push_str(path);
-                }
-            } else if let Some(path) = self.path.as_deref() {
-                s.push_str(path);
-            }
-            if let Some(query) = self.query.as_deref() {
-                s.push('?');
-                s.push_str(query);
-            }
-            if let Some(fragment) = self.fragment.as_deref() {
-                s.push('#');
-                s.push_str(fragment);
-            }
-            s
+            let uri: Uri = self.into();
+            uri.to_string()
         }
-
     }
 
     fn is_scheme(c: char) -> bool {
@@ -560,13 +579,16 @@ pub mod uri {
     pub fn percent_encode(_s: impl AsRef<str>) -> Result<String, ()> {
         unimplemented!();
     }
+
     #[cfg(test)]
     mod tests {
         use super::*;
 
         #[test]
         fn percent() {
-            assert_eq!(percent_decode("%21%40%23%24%25%2A%28%29With Some Text in the middle%7E%7B%7D%3A%3C%3E%3F_%2B").unwrap(), "!@#$%*()With Some Text in the middle~{}:<>?_+");
+            assert_eq!(
+            percent_decode("%21%40%23%24%25%2A%28%29With Some Text in the middle%7E%7B%7D%3A%3C%3E%3F_%2B").unwrap(),
+            "!@#$%*()With Some Text in the middle~{}:<>?_+");
         }
 
         #[test]
