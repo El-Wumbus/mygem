@@ -1,3 +1,5 @@
+#![allow(clippy::literal_string_with_formatting_args)]
+
 use std::io::{self, Read};
 use std::str::Lines;
 use std::sync::Arc;
@@ -513,43 +515,42 @@ pub mod uri {
         }
     }
 
-    impl ToString for Uri<'_> {
-        fn to_string(&self) -> String {
-            let mut s = String::new();
-            if let Some(scheme) = self.scheme.as_deref() {
-                s.push_str(scheme);
-                s.push(':');
+    impl std::fmt::Display for Uri<'_> {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+            if let Some(scheme) = self.scheme {
+                write!(f, "{scheme}")?;
+                write!(f, ":")?;
             }
 
             if self.host.is_some() {
-                s.push_str("//");
-                if let Some(userinfo) = self.userinfo.as_deref() {
-                    s.push_str(userinfo);
-                    s.push('@');
+                write!(f, "//")?;
+                if let Some(userinfo) = self.userinfo {
+                    write!(f, "{userinfo}")?;
+                    write!(f, "@")?;
                 }
-                if let Some(host) = self.host.as_deref() {
-                    s.push_str(host);
+                if let Some(host) = self.host {
+                    write!(f, "{host}")?;
                 }
-                if let Some(port) = self.port.as_deref() {
-                    s.push(':');
-                    s.push_str(port);
+                if let Some(port) = self.port {
+                    write!(f, ":")?;
+                    write!(f, "{port}")?;
                 }
-                if let Some(path) = self.path.as_deref() {
-                    s.push('/');
-                    s.push_str(path.trim_start_matches('/'));
+                if let Some(path) = self.path {
+                    write!(f, "/")?;
+                    write!(f, "{}", path.trim_start_matches("/"))?;
                 }
-            } else if let Some(path) = self.path.as_deref() {
-                s.push_str(path);
+            } else if let Some(path) = self.path {
+                write!(f, "{path}")?;
             }
-            if let Some(query) = self.query.as_deref() {
-                s.push('?');
-                s.push_str(query);
+            if let Some(query) = self.query {
+                write!(f, "?")?;
+                write!(f, "{query}")?;
             }
-            if let Some(fragment) = self.fragment.as_deref() {
-                s.push('#');
-                s.push_str(fragment);
+            if let Some(fragment) = self.fragment {
+                write!(f, "#")?;
+                write!(f, "{fragment}")?;
             }
-            s
+            Ok(())
         }
     }
 
@@ -577,10 +578,10 @@ pub mod uri {
         }
     }
 
-    impl ToString for UriOwned {
-        fn to_string(&self) -> String {
+    impl std::fmt::Display for UriOwned {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
             let uri: Uri = self.into();
-            uri.to_string()
+            write!(f, "{uri}")
         }
     }
 
@@ -603,19 +604,13 @@ pub mod uri {
             }
             rem -= 1;
             if rem == 0 {
-                out.push(
-                    u8::from_str_radix(&s[i - 1..=i], 16)
-                        .ok()
-                        .and_then(|x| char::try_from(x).ok())?,
-                );
+                out.push(u8::from_str_radix(&s[i - 1..=i], 16).ok().map(char::from)?);
             }
         }
         Some(out)
     }
 
-    pub fn percent_encode(_s: impl AsRef<str>) -> Result<String, ()> {
-        unimplemented!();
-    }
+    // TODO: Percent Encode
 
     #[cfg(test)]
     mod tests {
@@ -651,7 +646,7 @@ pub mod uri {
             Uri::new(test7).unwrap();
             let uri2 = Uri::new(test8).unwrap();
             assert_eq!(
-                uri2.path.as_deref(),
+                uri2.path,
                 Some("oasis:names:specification:docbook:dtd:xml:4.1.2")
             );
             Uri::new(test9).unwrap();
@@ -711,6 +706,12 @@ pub enum ClientError {
 
 pub struct Client {
     cfg: Arc<rustls::client::ClientConfig>,
+}
+
+impl Default for Client {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Client {

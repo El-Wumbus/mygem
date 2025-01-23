@@ -72,7 +72,7 @@ fn main() -> eframe::Result {
                             }
                         }
                     } else {
-                        page_content = format!("Invalid request URL!");
+                        page_content = "Invalid request URL!".to_string();
                         break;
                     };
                 }
@@ -96,12 +96,10 @@ fn main() -> eframe::Result {
         let mut state = state.lock().unwrap();
         egui::TopBottomPanel::top("Search").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if ui.button("back").clicked() {
-                    if state.nav.len() >= 2 {
-                        assert!(state.nav.pop().is_some());
-                        search_bar_text = state.nav.last().unwrap().to_string();
-                        sender.send(()).unwrap();
-                    }
+                if ui.button("back").clicked() && state.nav.len() >= 2 {
+                    assert!(state.nav.pop().is_some());
+                    search_bar_text = state.nav.last().unwrap().to_string();
+                    sender.send(()).unwrap();
                 }
                 ui.text_edit_singleline(&mut search_bar_text);
                 ctx.input(|i| {
@@ -115,12 +113,12 @@ fn main() -> eframe::Result {
                             eprintln!("Url is invalid!");
                         }
                     }
-                    if i.pointer.button_clicked(PointerButton::Extra1) {
-                        if state.nav.len() >= 2 {
-                            assert!(state.nav.pop().is_some());
-                            search_bar_text = state.nav.last().unwrap().to_string();
-                            sender.send(()).unwrap();
-                        }
+                    if i.pointer.button_clicked(PointerButton::Extra1)
+                        && state.nav.len() >= 2
+                    {
+                        assert!(state.nav.pop().is_some());
+                        search_bar_text = state.nav.last().unwrap().to_string();
+                        sender.send(()).unwrap();
                     }
                 });
                 if state.processing {
@@ -150,12 +148,12 @@ fn main() -> eframe::Result {
 /// Optionally returns a url to navigate to. This handles rendered links.
 fn render_gemtext(
     ui: &mut Ui,
-    mut gemtext: Gemtext,
+    gemtext: Gemtext,
     last_path: Option<&UriOwned>,
 ) -> (Option<String>, Option<UriOwned>) {
     let mut navto = None;
     let mut search_bar_text = None;
-    while let Some(line) = gemtext.next() {
+    for line in gemtext {
         match line {
             GemtextToken::Text(text, pre) => {
                 if pre.preformatted {
@@ -200,16 +198,14 @@ fn render_gemtext(
                         search_bar_text = Some(url.to_string());
                         navto = Some(url);
                     };
-                } else {
-                    if match text {
-                        Some(text) => ui.link(text),
-                        None => ui.link(link),
-                    }
-                    .clicked()
-                    {
-                        search_bar_text = Some(url.to_string());
-                        navto = Some(url.into());
-                    };
+                } else if match text {
+                    Some(text) => ui.link(text),
+                    None => ui.link(link),
+                }
+                .clicked()
+                {
+                    search_bar_text = Some(url.to_string());
+                    navto = Some(url.into());
                 }
             }
             _ => unreachable!(),

@@ -14,32 +14,31 @@ fn main() {
     eprintln!("Request: {request:?}");
 
     let client = Client::new();
-    let mut response = match client.send_request(request) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("Failed to get response: {e}");
-            std::process::exit(1);
-        }
-    };
 
-    // Follow redirects
-    while matches!(response.header.status, Status::Redirect(_)) {
-        eprintln!("Following redirect: {}", response.header.meta());
-        request = match Request::new(response.header.meta()) {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("Invalid request: {e}");
-                std::process::exit(1);
+    let mut response: Response;
+    // Loop to follow redirects
+    loop {
+        match client.send_request(request) {
+            Ok(r) => {
+                response = r;
             }
-        };
-        response = match client.send_request(request) {
-            Ok(r) => r,
             Err(e) => {
                 eprintln!("Failed to get response: {e}");
                 std::process::exit(1);
             }
         };
-        break;
+        if matches!(response.header.status, Status::Redirect(_)) {
+            eprintln!("Following redirect: {}", response.header.meta());
+            request = match Request::new(response.header.meta()) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("Invalid request: {e}");
+                    std::process::exit(1);
+                }
+            };
+        } else {
+            break;
+        }
     }
 
     if response.header.status != Status::Success {
