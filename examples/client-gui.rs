@@ -128,15 +128,12 @@ fn main() -> eframe::Result {
         });
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                let (new_search_bar, navto) = render_gemtext(
+                if let Some(navto) = render_gemtext(
                     ui,
                     Gemtext::new(&state.page_content),
                     state.nav.last(),
-                );
-                if let Some(x) = new_search_bar {
-                    search_bar_text = x;
-                };
-                if let Some(navto) = navto {
+                ) {
+                    search_bar_text = navto.to_string();
                     state.nav.push(navto);
                     sender.send(()).unwrap();
                 }
@@ -150,9 +147,8 @@ fn render_gemtext(
     ui: &mut Ui,
     gemtext: Gemtext,
     last_path: Option<&UriOwned>,
-) -> (Option<String>, Option<UriOwned>) {
+) -> Option<UriOwned> {
     let mut navto = None;
-    let mut search_bar_text = None;
     for line in gemtext {
         match line {
             GemtextToken::Text(text, pre) => {
@@ -206,7 +202,6 @@ fn render_gemtext(
                     }
                     .clicked()
                     {
-                        search_bar_text = Some(url.to_string());
                         navto = Some(url);
                     };
                 } else if match text {
@@ -215,11 +210,10 @@ fn render_gemtext(
                 }
                 .clicked()
                 {
-                    search_bar_text = Some(url.to_string());
                     navto = Some(url.into());
                 }
             }
         }
     }
-    (search_bar_text, navto)
+    navto
 }
