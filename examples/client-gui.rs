@@ -26,7 +26,7 @@ fn main() -> eframe::Result {
         move || {
             let client = Client::new();
             while receiver.recv().is_ok() {
-                let req_url = {
+                let mut req_url = {
                     let mut state = state.lock().unwrap();
                     let Some(req_url) = state.nav.last() else {
                         continue;
@@ -36,30 +36,46 @@ fn main() -> eframe::Result {
                     req_url
                 };
 
-                let page_content = if let Ok(request) = Request::new(&req_url) {
-                    match client.send_request(request) {
-                        Ok(response) => {
-                            if response.header.status == Status::Success
-                                && response.header.meta().starts_with("text/")
+                let page_content;
+                loop {
+                    if let Ok(request) = Request::new(&req_url) {
+                        match client.send_request(request) {
+                            Ok(response)
+                                if response.header.status == Status::Success
+                                    && response.header.meta().starts_with("text/") =>
                             {
-                                let body = response.body_as_str().unwrap();
-                                body.to_string()
-                            } else {
-                                format!(
+                                page_content =
+                                    response.body_as_str().unwrap().to_string();
+                                break;
+                            }
+                            Ok(resp)
+                                if matches!(resp.header.status, Status::Redirect(_)) =>
+                            {
+                                req_url = resp.header.meta().to_string();
+                                eprintln!("Following redirect to \"{}\"", req_url);
+                                continue;
+                            }
+                            Ok(response) => {
+                                page_content = format!(
                                     "{:?}: {}",
                                     response.header.status,
                                     response.header.meta()
-                                )
+                                );
+                                break;
+                            }
+                            Err(e) => {
+                                page_content = format!(
+                                    "Failed to make request to \"{}\"; {e}",
+                                    request.url_as_str()
+                                );
+                                break;
                             }
                         }
-                        Err(e) => format!(
-                            "Failed to make request to \"{}\"; {e}",
-                            request.url_as_str()
-                        ),
-                    }
-                } else {
-                    format!("Invalid request URL!")
-                };
+                    } else {
+                        page_content = format!("Invalid request URL!");
+                        break;
+                    };
+                }
 
                 let mut state = state.lock().unwrap();
                 state.page_content = page_content;
@@ -134,18 +150,22 @@ fn main() -> eframe::Result {
 /// Optionally returns a url to navigate to. This handles rendered links.
 fn render_gemtext(
     ui: &mut Ui,
-    gemtext: Gemtext,
+    mut gemtext: Gemtext,
     last_path: Option<&UriOwned>,
 ) -> (Option<String>, Option<UriOwned>) {
     let mut navto = None;
     let mut search_bar_text = None;
-    for line in gemtext {
+    while let Some(line) = gemtext.next() {
         match line {
-            GemtextToken::Text(text) => {
-                ui.label(text);
+            GemtextToken::Text(text, pre) => {
+                if pre.preformatted {
+                    ui.label(RichText::new(text).monospace().code());
+                } else {
+                    ui.label(text);
+                }
             }
-            GemtextToken::Heading(text, level) => {
-                ui.label(RichText::new(text).size(16.0 + 4.0 - level as f32));
+            GemtextToken::Heading(text, _level) => {
+                ui.label(RichText::new(text).heading());
             }
             GemtextToken::Link(link, text) => {
                 // Pages may use relative links which aren't valid URLs, so these must be
