@@ -1,5 +1,5 @@
 use eframe::egui;
-use egui::{Key, PointerButton, RichText, Ui};
+use egui::{Color32, Key, PointerButton, Rgba, RichText, Ui};
 use mygem::{
     uri::{Uri, UriOwned},
     *,
@@ -165,6 +165,15 @@ fn render_gemtext(
             GemtextToken::Heading(text, _level) => {
                 ui.label(RichText::new(text).heading());
             }
+            GemtextToken::List(text, indentation) => {
+                ui.label(format!("{}• {text}", " ".repeat(indentation as usize)));
+            }
+            GemtextToken::Quote(text) => {
+                ui.label(
+                    RichText::new(format!("> {text}"))
+                        .background_color(Rgba::from(Color32::DARK_BLUE).multiply(0.3)),
+                );
+            }
             GemtextToken::Link(link, text) => {
                 // Pages may use relative links which aren't valid URLs, so these must be
                 // corrected.
@@ -172,7 +181,7 @@ fn render_gemtext(
                     ui.label(link);
                     continue;
                 };
-                if url.host.is_none() && url.path.is_none_or(|x| !x.starts_with('/')) {
+                if url.host.is_none() {
                     let mut url = UriOwned::from(url);
                     let (mut path, dir) = if let Some(current_path) = last_path {
                         url.host = current_path.host.clone();
@@ -181,7 +190,9 @@ fn render_gemtext(
                     } else {
                         (std::path::PathBuf::new(), true)
                     };
-                    if let Some(p) = url.path {
+                    if let Some(p) =
+                        url.path.as_deref().map(|x| x.trim_start_matches('/'))
+                    {
                         if !dir {
                             path.pop();
                         }
@@ -208,7 +219,6 @@ fn render_gemtext(
                     navto = Some(url.into());
                 }
             }
-            _ => unreachable!(),
         }
     }
     (search_bar_text, navto)

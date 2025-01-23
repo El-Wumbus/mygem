@@ -1,7 +1,6 @@
 #![allow(clippy::literal_string_with_formatting_args)]
 
 use std::io::{self, Read};
-use std::str::Lines;
 use std::sync::Arc;
 
 pub use status::Status;
@@ -340,92 +339,105 @@ pub mod status {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum GemtextToken<'a> {
-    Text(&'a str, TokenPreformatted<'a>),
-    /// A link line, where `0` is the the url and `1` is the optional dipslay
-    /// name.
-    ///
-    /// ```not_rust
-    /// =>[<whitespace>]<URL>[<whitespace><USER-FRIENDLY LINK NAME>]
-    /// ```
-    Link(&'a str, Option<&'a str>),
-    /// Preformatted text. This may contain multiple lines.
-    /// '0' is the text and '1' is the the optional alt-text found after the
-    /// first `` ``` ``.
-    Preformatted(&'a str, Option<&'a str>),
-    /// A heading line. Any line starting with one to three `#` characters.
-    /// `0` is the heading text and `1` is the level (or `#` count).
-    Heading(&'a str, u8),
-    /// A list item. Any line starting with a `*` is a list item.
-    List(&'a str, u8),
-    /// A quote line. Any line starting with a `>` is a quote line.
-    Quote(&'a str),
-}
+pub use gemtext::{Gemtext, GemtextToken};
+pub mod gemtext {
+    use std::str::Lines;
+    #[derive(Debug, Clone, Copy)]
+    pub enum GemtextToken<'a> {
+        Text(&'a str, TokenPreformatted<'a>),
+        /// A link line, where `0` is the the url and `1` is the optional
+        /// dipslay name.
+        ///
+        /// ```not_rust
+        /// =>[<whitespace>]<URL>[<whitespace><USER-FRIENDLY LINK NAME>]
+        /// ```
+        Link(&'a str, Option<&'a str>),
+        /// A heading line. Any line starting with one to three `#` characters.
+        /// `0` is the heading text and `1` is the level (or `#` count).
+        Heading(&'a str, u8),
+        /// A list item. Any line starting with a `*` is a list item.
+        /// '0' is the text and '1' is the indentation level
+        List(&'a str, u8),
+        /// A quote line. Any line starting with a `>` is a quote line.
+        Quote(&'a str),
+    }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct TokenPreformatted<'a> {
-    pub preformatted: bool,
-    pub alt_text: Option<&'a str>,
-}
+    #[derive(Debug, Clone, Copy, Default, PartialEq)]
+    pub struct TokenPreformatted<'a> {
+        pub preformatted: bool,
+        pub alt_text: Option<&'a str>,
+    }
 
-#[derive(Debug, Clone)]
-pub struct Gemtext<'a> {
-    lines: Lines<'a>,
-    pre: TokenPreformatted<'a>,
-}
+    #[derive(Debug, Clone)]
+    pub struct Gemtext<'a> {
+        lines: Lines<'a>,
+        pre: TokenPreformatted<'a>,
+    }
 
-impl<'a> Gemtext<'a> {
-    pub fn new(src: &'a str) -> Self {
-        Self {
-            lines: src.lines(),
-            pre: TokenPreformatted::default(),
+    impl<'a> Gemtext<'a> {
+        pub fn new(src: &'a str) -> Self {
+            Self {
+                lines: src.lines(),
+                pre: TokenPreformatted::default(),
+            }
         }
     }
-}
 
-impl<'a> Iterator for Gemtext<'a> {
-    type Item = GemtextToken<'a>;
+    impl<'a> Iterator for Gemtext<'a> {
+        type Item = GemtextToken<'a>;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut line = self.lines.next()?;
+        fn next(&mut self) -> Option<Self::Item> {
+            let mut line = self.lines.next()?;
 
-        if line.starts_with("```") {
-            self.pre.preformatted = !self.pre.preformatted;
-            if self.pre.preformatted {
-                self.pre.alt_text = Some(line.strip_prefix("```").unwrap().trim_start());
-            }
-            line = match self.lines.next() {
-                Some(x) => x,
-                None => {
-                    return Some(GemtextToken::Text(line, TokenPreformatted::default()));
+            if line.starts_with("```") {
+                self.pre.preformatted = !self.pre.preformatted;
+                if self.pre.preformatted {
+                    self.pre.alt_text =
+                        Some(line.strip_prefix("```").unwrap().trim_start());
                 }
-            };
-        }
-        if !self.pre.preformatted && line.starts_with("#") {
-            let count = line.chars().filter(|x| *x == '#').count();
-            if count < 4 {
-                let line =
-                    line.trim_start_matches(|x: char| x == '#' || x.is_whitespace());
-                return Some(GemtextToken::Heading(line, count as u8));
+                line = match self.lines.next() {
+                    Some(x) => x,
+                    None => {
+                        return Some(GemtextToken::Text(
+                            line,
+                            TokenPreformatted::default(),
+                        ));
+                    }
+                };
             }
-        } else if !self.pre.preformatted && line.starts_with("=>") {
-            let line = line.strip_prefix("=>").unwrap();
-            if line.starts_with(char::is_whitespace) {
-                let line = line.trim_start();
-                let (bruh, moment) = line
-                    .split_once(char::is_whitespace)
-                    .map(|(x, y)| (x, Some(y.trim_start())))
-                    .unwrap_or((line, None));
-                return Some(GemtextToken::Link(bruh, moment));
+            if !self.pre.preformatted {
+                if line.starts_with('#') {
+                    let count = line.chars().filter(|x| *x == '#').count();
+                    if count < 4 {
+                        let line = line
+                            .trim_start_matches(|x: char| x == '#' || x.is_whitespace());
+                        return Some(GemtextToken::Heading(line, count as u8));
+                    }
+                } else if let Some(line) = line.strip_prefix("=>") {
+                    if line.starts_with(char::is_whitespace) {
+                        let line = line.trim_start();
+                        let (bruh, moment) = line
+                            .split_once(char::is_whitespace)
+                            .map(|(x, y)| (x, Some(y.trim_start())))
+                            .unwrap_or((line, None));
+                        return Some(GemtextToken::Link(bruh, moment));
+                    }
+                } else if line.trim_start().starts_with('*') {
+                    let trimmed = line.trim_start();
+                    let indentation = trimmed.len() - line.len();
+                    return Some(GemtextToken::List(
+                        trimmed.strip_prefix('*').unwrap(),
+                        indentation as u8,
+                    ));
+                } else if let Some(line) = line.strip_prefix('>') {
+                    return Some(GemtextToken::Quote(line.trim_start()));
+                }
             }
+
+            Some(GemtextToken::Text(line, self.pre))
         }
-        // TODO: more Gemtext feaures like, preformatted text, list items, and quoted
-        // text
-        Some(GemtextToken::Text(line, self.pre))
     }
 }
-
 pub mod uri {
     #[derive(Debug, thiserror::Error)]
     pub enum Error {
