@@ -174,6 +174,12 @@ impl ResponseHeader {
     }
 }
 
+impl std::fmt::Display for ResponseHeader {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        write!(f, "{:?} {}", self.status, self.meta.as_str())
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ResponseReadError {
     #[error("header: {0}")]
