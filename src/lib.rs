@@ -451,7 +451,7 @@ pub mod uri {
         Invalid,
     }
 
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct Uri<'a> {
         pub scheme: Option<&'a str>,
         pub userinfo: Option<&'a str>,
@@ -572,6 +572,7 @@ pub mod uri {
         }
     }
 
+    #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct UriOwned {
         pub scheme: Option<String>,
         pub userinfo: Option<String>,
