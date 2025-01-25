@@ -11,6 +11,7 @@ An implementation of the [Gemini protocol](https://geminiprotocol.net)
   - [ ] Send
   - [x] Create 
   - [x] Receive
+    - [ ] Follow redirects automatically
 - [x] Status codes
 - [ ] Client Certificates
 

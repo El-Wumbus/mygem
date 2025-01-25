@@ -596,6 +596,12 @@ pub mod uri {
         }
     }
 
+    impl UriOwned {
+        pub fn as_ref(&self) -> Uri {
+            self.into()
+        }
+    }
+
     impl std::fmt::Display for UriOwned {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
             let uri: Uri = self.into();
